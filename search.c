@@ -45,26 +45,43 @@ int main (int argc, char *argv[]) {
             exit(1);
         }
 
-    //Poner el socket en modo escucha
-    r = listen(fd, BACKLOG);
+
+    //Abrir el archivo CSV
+    FILE *f = fopen(ruta_csv, "w+");
+        if (f == NULL) {
+            perror("Error al abrir el archivo CSV");
+            exit(1);
+        }
+
+    //Construir el indice
+    construir_indice(f);
+    printf("Indice construido.\n");
+
+    while(1) {
+
+        //Poner el socket en modo escucha
+        r = listen(fd, BACKLOG);
         if (r < 0) {
             perror("Error en listen");
             close(fd);
             exit(1);
         }
 
-    printf("Buscador iniciado. Esperando conexion en el puerto %d...\n", PORT);
+        printf("Buscador iniciado. Esperando conexion en el puerto %d...\n", PORT);
 
-    size = sizeof(struct sockaddr_in);
-    fd2 = accept(fd, (struct sockaddr_in *)&client, &size);
-        if (fd2 < 0) {
-            perror("Error en accept");
-            close(fd);
-            close(fd2);
-            exit(1);
+        //Aceptar conexiones entrantes
+        size = sizeof(struct sockaddr_in);
+        fd2 = accept(fd, (struct sockaddr_in *)&client, &size);
+            if (fd2 < 0) {
+                perror("Error en accept");
+                close(fd);
+                close(fd2);
+                exit(1);
             
-        }
-
+            }
+    
+        
+    }
 
     printf("Buscador finalizado.\n");
     return 0;
