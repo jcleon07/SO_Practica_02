@@ -23,7 +23,7 @@ int main (int argc, char *argv[]) {
     int fd, fd2, r;
     struct sockaddr_in server;
     socklen_t size;
-    char buffer[200];
+    char buffer[1000];
 
     //Creacion del socket
     fd = socket(AF_INET, SOCK_STREAM, 0);
