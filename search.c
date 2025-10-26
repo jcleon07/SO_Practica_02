@@ -22,7 +22,7 @@ int main (int argc, char *argv[]) {
     int fd, fd2, r;
     struct sockaddr_in server, client;
     socklen_t size;
-    char buffer[20];
+    char buffer[200];
 
     //Creacion del socket
     fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -89,33 +89,41 @@ int main (int argc, char *argv[]) {
                 exit(1);
             }
 
+            // Validar SALIR
             if (strcmp(buffer, "<<SALIR>>") == 0) {
                 close(fd2);
                 break;
             }
 
-
-            char temp[RESP_MAX];
-            char *res = buscar_por_clave(f, buffer, temp);
-            if (res) {
-                r = send(fd2, res, strlen(res), 0);
-                    if (r < 0) {
-                        perror("Error en send");
-                        close(fd);
-                        close(fd2);
-                        exit(1);
-                    }
-            } else {
-                r = send(fd2, "N/A", strlen("N/A"), 0);
-                    if (r < 0) {
-                        perror("Error en send");
-                        close(fd);
-                        close(fd2);
-                        exit(1);
-                    }     
+            //Agregar registro
+            if (strncmp(buffer, "OP2|",4) == 0) {
+                
             }
-    
-        
+
+            // Buscar registro por titulo
+            if (strncmp(buffer, "OP1|",4) == 0) {
+
+                char *titulo = buffer + 4;
+                char temp[RESP_MAX];
+                char *res = buscar_por_clave(f, titulo, temp);
+                if (res) {
+                    r = send(fd2, res, strlen(res), 0);
+                        if (r < 0) {
+                            perror("Error en send");
+                            close(fd);
+                            close(fd2);
+                            exit(1);
+                        }
+                } else {
+                    r = send(fd2, "N/A", strlen("N/A"), 0);
+                        if (r < 0) {
+                            perror("Error en send");
+                            close(fd);
+                            close(fd2);
+                            exit(1);
+                        }     
+                }
+            }
     }
 
     printf("Buscador finalizado.\n");
