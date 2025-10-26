@@ -4,10 +4,11 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include "hash.h"
 
-#define PORT 3535;
-#define BACKLOG 4;
+#define PORT 3540
+#define BACKLOG 4
 
 int main (int argc, char *argv[]) {
     if (argc != 2) {
@@ -20,7 +21,7 @@ int main (int argc, char *argv[]) {
 
     //Declaracion de variables
     int fd, fd2, r;
-    struct sockaddr_in server, client;
+    struct sockaddr_in server;
     socklen_t size;
     char buffer[200];
 
@@ -34,7 +35,7 @@ int main (int argc, char *argv[]) {
     //Configuracion del servidor
     server.sin_family = AF_INET;
     server.sin_port = htons(PORT);
-    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_addr.s_addr = inet_addr("127.0.0.1");
     bzero(&(server.sin_zero),8);
     
     //Asociar socket con direccion y puerto
@@ -57,47 +58,76 @@ int main (int argc, char *argv[]) {
     construir_indice(f);
     printf("Indice construido.\n");
 
-    while(1) {
+    //Poner el socket en modo escucha
+    r = listen(fd, BACKLOG);
+    if (r < 0) {
+        perror("Error en listen");
+        close(fd);
+        exit(1);
+    }
 
-        //Poner el socket en modo escucha
-        r = listen(fd, BACKLOG);
-        if (r < 0) {
-            perror("Error en listen");
+    printf("Buscador iniciado. Esperando conexion en el puerto %d...\n", PORT);
+
+    //Aceptar conexiones entrantes
+    size = sizeof(struct sockaddr_in);
+    fd2 = accept(fd, (struct sockaddr *)&server, &size);
+        if (fd2 < 0) {
+            perror("Error en accept");
             close(fd);
+            close(fd2);
+            exit(1);
+        
+        }
+
+    //Confirmar conexion
+    r = recv(fd2, buffer, sizeof(buffer) - 1, 0);
+        if (r < 0) {
+            perror("Error en recv");
+            close(fd);
+            close(fd2);
             exit(1);
         }
 
-        printf("Buscador iniciado. Esperando conexion en el puerto %d...\n", PORT);
+    buffer[r] = '\0';
+    printf("%s\n", buffer);
 
-        //Aceptar conexiones entrantes
-        size = sizeof(struct sockaddr_in);
-        fd2 = accept(fd, (struct sockaddr_in *)&client, &size);
-            if (fd2 < 0) {
-                perror("Error en accept");
-                close(fd);
-                close(fd2);
-                exit(1);
-            
-            }
+    //Bucle principal del servidor
+    while(1) {
 
         //Recibir datos del cliente
-        r = recv(fd2, buffer, sizeof(buffer), 0);
+        r = recv(fd2, buffer, sizeof(buffer) - 1, 0);
             if (r < 0) {
                 perror("Error en recv");
                 close(fd);
                 close(fd2);
                 exit(1);
             }
+        buffer[r] = '\0'; 
 
             // Validar SALIR
             if (strcmp(buffer, "<<SALIR>>") == 0) {
-                close(fd2);
-                break;
+                
+                r = send(fd2, "Conexion cerrada", strlen("Conexion cerrada"), 0);
+                    if (r < 0) {
+                        perror("Error en send");
+                        close(fd);
+                        close(fd2);
+                        exit(1);
+                    }
+              break;
             }
 
             //Agregar registro
             if (strncmp(buffer, "OP2|",4) == 0) {
+                añadir_registro(f, buffer +4, buffer +5, buffer +6, buffer +7, buffer +8, buffer +9);
                 
+                r = send(fd2, "Registro añadido", strlen("Registro añadido"), 0);
+                    if (r < 0) {
+                        perror("Error en send");
+                        close(fd);
+                        close(fd2);
+                        exit(1);
+                    }
             }
 
             // Buscar registro por titulo
@@ -125,6 +155,10 @@ int main (int argc, char *argv[]) {
                 }
             }
     }
+    liberar_tabla();
+    fclose(f);
+    close(fd);
+    close(fd2);
 
     printf("Buscador finalizado.\n");
     return 0;

@@ -4,9 +4,10 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include "hash.h"
 
-#define PORT 3539
+#define PORT 3540
 #define BACKLOG 4 
 
 int main() {
@@ -15,7 +16,7 @@ int main() {
  
     //Declaracion de variables
     int fd, r, op;
-    struct sockaddr_in server, cliente;
+    struct sockaddr_in server;
     char buffer[200];
 
     //Creacion del socket
@@ -28,7 +29,7 @@ int main() {
     //Configuracion del servidor
     server.sin_family = AF_INET;
     server.sin_port = htons(PORT);
-    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_addr.s_addr = inet_addr("127.0.0.1");
     bzero(&(server.sin_zero),8);
     
     //Coneccion al servidor
@@ -38,6 +39,13 @@ int main() {
             close(fd);
             exit(1);
         }
+
+    //Verificar conexion
+    r = send(fd, "Servidor conectado...", sizeof("Servidor conectado..."), 0);
+    if (r == -1){
+        perror("Error al enviar");
+        exit(-1);
+    }
  
     while (1) {
         printf("\n--- MENU ---\n");
@@ -55,11 +63,21 @@ int main() {
             r = send(fd, "<<SALIR>>", strlen("<<SALIR>>"), 0);
                 if (r < 0) {
                     perror("Error en send");
-                    close(fd);
-                    break;
+                    exit(1);
                 }
+
+            r = recv(fd, buffer, sizeof(buffer) - 1, 0);
+                if (r < 0) {
+                    perror("Error en recv");
+                    exit(1);
+                }
+
+            printf("%s\n", buffer);
+            close(fd);
+            break;
         }
 
+        // Añadir registro
         if (op == 2){
             printf("Ingrese el registro a añadir (separado por comas): ");
             
@@ -101,12 +119,23 @@ int main() {
             snprintf(registro, sizeof(registro), "OP2|%s|%s|%s|%s|%s|%s", titulo, ingredientes, 
                     descripcion, links, source, NER);    
 
+            //Enviar registro al servidor
             r = send(fd, registro, strlen(registro), 0);
                 if (r < 0) {
                     perror("Error en send");
                     close(fd);
                     exit(1);
                 }
+            //Esperar respuesta del servidor
+            r = recv(fd, buffer, sizeof(buffer) - 1, 0);
+                if (r < 0) {
+                    perror("Error en recv");
+                    close(fd);
+                    exit(1);
+                }
+
+            buffer[r] = '\0';
+            printf("%s\n", buffer);
         }
 
         // Buscar registro
@@ -118,15 +147,31 @@ int main() {
             char registro[200];
             snprintf(registro, sizeof(registro), "OP1|%s", buffer);
 
+            //Enviar titulo al servidor
             r = send(fd, registro, strlen(registro), 0);
                 if (r < 0) {
                     perror("Error en send");
                     close(fd);
                     exit(1);
                 }
+            
+            //Esperar respuesta del servidor con consulta
+            r = recv(fd, buffer, sizeof(buffer) - 1, 0);
+                if (r < 0) {
+                    perror("Error en recv");
+                    close(fd);
+                    exit(1);
+                }
+            
+            buffer[r] = '\0';
+
+            
+            //Imprime el registro encontrado
+            printf("Resultado: %s\n", buffer);
         }
         
     }
+    close(fd);
 
     return 0;
 }
