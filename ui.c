@@ -48,6 +48,7 @@ int main() {
     }
  
     while (1) {
+
         printf("\n--- MENU ---\n");
         printf("1) Buscar registro por título (segunda columna)\n");
         printf("2) Añadir registro\n");
@@ -91,31 +92,31 @@ int main() {
             
             printf("Titulo: ");
             fgets(titulo, sizeof(titulo), stdin);
-            titulo[strcspn(titulo, "\n")] = 0; // Eliminar salto de linea
+            titulo[strcspn(titulo, "\n")] = '\0'; // Eliminar salto de linea
 
             printf("Ingredientes: ");
             fgets(ingredientes, sizeof(ingredientes), stdin);
-            ingredientes[strcspn(ingredientes, "\n")] = 0; 
+            ingredientes[strcspn(ingredientes, "\n")] = '\0'; 
 
             printf("Descripcion: ");
             fgets(descripcion, sizeof(descripcion), stdin);
-            descripcion[strcspn(descripcion, "\n")] = 0;
+            descripcion[strcspn(descripcion, "\n")] = '\0';
 
             printf("Links: ");
             fgets(links, sizeof(links), stdin);
-            links[strcspn(links, "\n")] = 0;
+            links[strcspn(links, "\n")] = '\0';
 
             printf("Source: ");
             fgets(source, sizeof(source), stdin);
-            source[strcspn(source, "\n")] = 0;
+            source[strcspn(source, "\n")] = '\0';
 
             printf("NER: ");
             fgets(NER, sizeof(NER), stdin); 
-            NER[strcspn(NER, "\n")] = 0;
+            NER[strcspn(NER, "\n")] = '\0';
            
 
             //Registro completo
-            char registro[6000];
+            char registro[8000];
             snprintf(registro, sizeof(registro), "OP2|%s|%s|%s|%s|%s|%s", titulo, ingredientes, 
                     descripcion, links, source, NER);    
 
@@ -142,9 +143,9 @@ int main() {
         if (op == 1) {
             printf("Ingrese el nombre del titulo (igual a como aparece en el CSV): ");
             fgets(buffer, sizeof(buffer), stdin);
-            buffer[strcspn(buffer, "\n")] = 0; // Eliminar salto de linea
+            buffer[strcspn(buffer, "\r\n")] = '\0'; // Eliminar salto de linea
 
-            char registro[200];
+            char registro[300];
             snprintf(registro, sizeof(registro), "OP1|%s", buffer);
 
             //Enviar titulo al servidor
@@ -156,20 +157,19 @@ int main() {
                 }
             
             //Esperar respuesta del servidor con consulta
-            r = recv(fd, buffer, sizeof(buffer) - 1, 0);
+            r = recv(fd, buffer, sizeof(buffer), 0);
                 if (r < 0) {
                     perror("Error en recv");
                     close(fd);
                     exit(1);
                 }
-            
-            buffer[r] = '\0';
-
-            
+    
             //Imprime el registro encontrado
             printf("Resultado: %s\n", buffer);
+
         }
-        
+     
+        memset(buffer, 0, sizeof(buffer));
     }
     close(fd);
 

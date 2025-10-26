@@ -5,9 +5,9 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#define TAM_TABLA 100000
+#define TAM_TABLA 1000
 #define CLAVE_MAX 512
-#define RESP_MAX 4096
+#define RESP_MAX 10096
 
 typedef struct Nodo {
     uint64_t hash;

@@ -226,13 +226,15 @@ char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out){
                         buffer_out[--L] = '\0';
                     }
                     
+                    // extraer la clave real y comparar normalizada
                     char clave_leida[CLAVE_MAX];
-                    if (extract_nth_field(buffer_out, 2, clave_leida, sizeof(clave_leida))) {
+                    if (extract_nth_field(buffer_out,2,clave_leida,sizeof(clave_leida))) {
                         to_lower_str(clave_leida);
                         if (strcmp(clave_leida, clave_norm) == 0) {
                             return buffer_out;
                         }
                     }
+
                 }
             }
         }

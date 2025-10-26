@@ -48,7 +48,7 @@ int main (int argc, char *argv[]) {
 
 
     //Abrir el archivo CSV
-    FILE *f = fopen(ruta_csv, "w+");
+    FILE *f = fopen(ruta_csv, "a+");
         if (f == NULL) {
             perror("Error al abrir el archivo CSV");
             exit(1);
@@ -94,6 +94,8 @@ int main (int argc, char *argv[]) {
     //Bucle principal del servidor
     while(1) {
 
+        memset(buffer, 0, sizeof(buffer));
+        
         //Recibir datos del cliente
         r = recv(fd2, buffer, sizeof(buffer) - 1, 0);
             if (r < 0) {
@@ -102,6 +104,7 @@ int main (int argc, char *argv[]) {
                 close(fd2);
                 exit(1);
             }
+
         buffer[r] = '\0'; 
 
             // Validar SALIR
@@ -134,8 +137,12 @@ int main (int argc, char *argv[]) {
             if (strncmp(buffer, "OP1|",4) == 0) {
 
                 char *titulo = buffer + 4;
+                char *res = NULL;
                 char temp[RESP_MAX];
-                char *res = buscar_por_clave(f, titulo, temp);
+
+                memset(temp, 0, sizeof(temp));      
+
+                res = buscar_por_clave(f, titulo, temp);
                 if (res) {
                     r = send(fd2, res, strlen(res), 0);
                         if (r < 0) {
