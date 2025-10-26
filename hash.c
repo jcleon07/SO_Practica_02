@@ -12,7 +12,6 @@ Nodo *nodes = NULL;
 int32_t nodes_capacity = 0;
 int32_t nodes_count = 0;
 
-// Cache de registros
 RegistroInfo *registros_cache = NULL;
 int total_registros = 0;
 
@@ -65,64 +64,63 @@ static int extract_nth_field(const char* s, int n, char* out, size_t max) {
 
     const char *p = s;
     int field = 1;
+    int in_quotes = 0;
+    int in_array = 0;
 
     while (*p && field <= n) {
         size_t i = 0;
 
-        // Saltar espacios iniciales
-        while(*p == ' ' || *p == '\t')
-            ++p;
+        while(*p == ' ' || *p == '\t') ++p;
 
-        int in_quotes = 0;
         if(*p == '"') {
             in_quotes = 1;
             ++p;
+        } else if (*p == '[') {
+            in_array = 1;
+            ++p;
         }
 
-        // Procesar el campo
-        while (*p) {
+        while (*p && i < max - 1) {
             if (in_quotes) {
                 if (*p == '"' && *(p+1) == '"') {
-                    // Comilla doble dentro de comillas
-                    if (i + 1 < max) 
-                        out[i++] = '"';
+                    out[i++] = '"';
                     p += 2;
                 } else if (*p == '"') {
-                    // Fin de comillas
                     ++p;
                     break;
                 } else {
-                    if (i + 1 < max)
-                        out[i++] = *p;
+                    out[i++] = *p++;
+                }
+            } else if (in_array) {
+                if (*p == ']') {
                     ++p;
+                    break;
+                } else {
+                    out[i++] = *p++;
                 }
             } else {
-                if (*p == ',' || *p == '\n' || *p == '\r')
-                    break;
-                if (i + 1 < max)
-                    out[i++] = *p;
-                ++p;
+                if (*p == ',' || *p == '\n' || *p == '\r') break;
+                out[i++] = *p++;
             }
-        }
-
-        // Quitar espacios finales si no está entre comillas
-        if (!in_quotes) {
-            while (i > 0 && (out[i-1] == ' ' || out[i-1] == '\t'))
-                --i;
         }
 
         out[i] = '\0';
 
-        if (field == n) {
-            return 1;
+        if(!in_quotes && !in_array) {
+            while(i > 0 && (out[i-1] == ' ' || out[i-1] == '\t')) {
+                out[--i] = '\0';
+            }
         }
 
-        // Avanzar al siguiente campo
-        if (*p == ',')
+        if(field == n) return 1;
+
+        if(*p == ',') {
             ++p;
+            in_quotes = 0;
+            in_array = 0;
+        }
         ++field;
     }
-
     return 0;
 }
 
@@ -135,7 +133,6 @@ void insertar_indice(const char *clave_orig, off_t offset){
     uint64_t h = calcular_hash64(clave);
     int idx = indice_de_hash_from_u64(h);
 
-    // Redimensionar si no hay espacio
     if(!nodes || nodes_count >= nodes_capacity) {
         size_t new_capacity = nodes_capacity * 2;
         if (new_capacity == 0) new_capacity = 16;
@@ -170,7 +167,6 @@ void construir_indice(FILE *f) {
     }
     reservar_pool_nodos(expected + 16);
 
-    // Inicializar la caché de registros
     total_registros = 0;
     registros_cache = NULL;
 
@@ -178,13 +174,12 @@ void construir_indice(FILE *f) {
     size_t len = 0;
     ssize_t nread;
 
-    // Saltar la cabecera
     if ((nread = getline(&line, &len, f)) == -1) {
         free(line);
         return;
     }
 
-    const int COL_A_INDEXAR = 2;
+    const int COL_A_INDEXAR = 2;  // Título es la columna 2 (ID es columna 1)
 
     while (1) {
         off_t pos = ftello(f);
@@ -194,7 +189,6 @@ void construir_indice(FILE *f) {
         if (nread == -1)
             break;
 
-        // Añadir a la caché de registros
         if (total_registros % 1000 == 0) {
             registros_cache = realloc(registros_cache, (total_registros + 1000) * sizeof(RegistroInfo));
         }
@@ -232,7 +226,6 @@ char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out){
                         buffer_out[--L] = '\0';
                     }
                     
-                    // extraer la clave real y comparar normalizada
                     char clave_leida[CLAVE_MAX];
                     if (extract_nth_field(buffer_out, 2, clave_leida, sizeof(clave_leida))) {
                         to_lower_str(clave_leida);
@@ -240,7 +233,6 @@ char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out){
                             return buffer_out;
                         }
                     }
-
                 }
             }
         }
@@ -249,26 +241,43 @@ char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out){
     return NULL;
 }
 
-// Función para añadir un nuevo registro al archivo y al índice
-int añadir_registro(FILE *f, const char *registro) {
-    if (!f || !registro) {
+int añadir_registro(FILE *f, const char *titulo, const char *ingredientes, const char *instrucciones, const char *enlace, const char *fuente, const char *entidades) {
+    if (!f || !titulo || !ingredientes || !instrucciones) {
         errno = EINVAL;
         return -1;
     }
 
-    // Validar formato básico del registro
-    if (strlen(registro) == 0 || strchr(registro, '\n') != NULL) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    // Bloquear el archivo para escritura
     if (flock(fileno(f), LOCK_EX) == -1) {
         perror("flock");
         return -1;
     }
 
-    // Mover al final del archivo
+    int ultimo_id = 0;
+    char *line = NULL;
+    size_t len = 0;
+    rewind(f);
+    
+    if (getline(&line, &len, f) == -1) {
+        ultimo_id = 0;
+    } else {
+        off_t last_pos = 0;
+        while (getline(&line, &len, f) != -1) {
+            char id_str[20];
+            if (extract_nth_field(line, 1, id_str, sizeof(id_str))) {
+                int current_id = atoi(id_str);
+                if (current_id > ultimo_id) {
+                    ultimo_id = current_id;
+                }
+            }
+            last_pos = ftello(f);
+        }
+    }
+    
+    free(line);
+    line = NULL;
+
+    int nuevo_id = ultimo_id + 1;
+
     if (fseeko(f, 0, SEEK_END) != 0) {
         perror("fseek SEEK_END");
         flock(fileno(f), LOCK_UN);
@@ -282,37 +291,39 @@ int añadir_registro(FILE *f, const char *registro) {
         return -1;
     }
 
-    // Escribir el registro
-    if (fprintf(f, "%s\n", registro) < 0) {
+    char registro_completo[RESP_MAX];
+    snprintf(registro_completo, sizeof(registro_completo), 
+             "%d,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n",
+             nuevo_id,
+             titulo,
+             ingredientes,
+             instrucciones,
+             enlace ? enlace : "",
+             fuente ? fuente : "user",
+             entidades ? entidades : "[]");
+
+    if (fprintf(f, "%s", registro_completo) < 0) {
         perror("fprintf");
         flock(fileno(f), LOCK_UN);
         return -1;
     }
     fflush(f);
 
-    // Actualizar la caché de registros
     if (total_registros % 1000 == 0) {
         registros_cache = realloc(registros_cache, (total_registros + 1000) * sizeof(RegistroInfo));
     }
     registros_cache[total_registros].offset = offset;
-    registros_cache[total_registros].length = strlen(registro) + 1; // Incluye el '\n'
+    registros_cache[total_registros].length = strlen(registro_completo);
     total_registros++;
 
-    // Insertar en el índice
-    char clave[CLAVE_MAX];
-    if (extract_nth_field(registro, 2, clave, sizeof(clave))) {
-        insertar_indice(clave, offset);
-    } else {
-        flock(fileno(f), LOCK_UN);
-        return 0;
-    }
+    insertar_indice(titulo, offset);
 
-    // Desbloquear el archivo
     flock(fileno(f), LOCK_UN);
-    return 0;
+    
+    printf("Nueva receta añadida con ID: %d\n", nuevo_id);
+    return nuevo_id;
 }
 
-// Función para leer un registro por número de registro
 char* leer_por_numero_registro(FILE *f, int numero_registro, char *buffer_out) {
     if (numero_registro < 1 || numero_registro > total_registros) {
         return NULL;
@@ -331,7 +342,6 @@ char* leer_por_numero_registro(FILE *f, int numero_registro, char *buffer_out) {
 
     buffer_out[info->length] = '\0';
 
-    // Quitar el salto de línea al final si existe
     size_t L = strlen(buffer_out);
     while (L > 0 && (buffer_out[L-1] == '\n' || buffer_out[L-1] == '\r')) {
         buffer_out[--L] = '\0';
