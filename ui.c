@@ -83,7 +83,7 @@ int main() {
             printf("Ingrese el registro a añadir (separado por comas): ");
             
             //Campos del registro
-            char titulo[RESP_MAX];
+            char titulo[200];
             char ingredientes[1500];
             char descripcion[2000];
             char links[500];
@@ -145,7 +145,7 @@ int main() {
             fgets(buffer, sizeof(buffer), stdin);
             buffer[strcspn(buffer, "\r\n")] = '\0'; // Eliminar salto de linea
 
-            char registro[300];
+            char registro[1006];
             snprintf(registro, sizeof(registro), "OP1|%s", buffer);
 
             //Enviar titulo al servidor
