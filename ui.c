@@ -156,13 +156,19 @@ int main() {
                     exit(1);
                 }
             
-            //Esperar respuesta del servidor con consulta
-            r = recv(fd, buffer, sizeof(buffer), 0);
+            // Limpiar el búfer antes de recibir la respuesta
+            memset(buffer, 0, sizeof(buffer));
+            
+            // Esperar respuesta del servidor con consulta
+            r = recv(fd, buffer, sizeof(buffer) - 1, 0);
                 if (r < 0) {
                     perror("Error en recv");
                     close(fd);
                     exit(1);
                 }
+            
+            // Asegurarse de que el buffer esté terminado en nulo
+            buffer[r] = '\0';
     
             //Imprime el registro encontrado
             printf("Resultado: %s\n", buffer);
