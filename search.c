@@ -79,6 +79,41 @@ int main (int argc, char *argv[]) {
                 exit(1);
             
             }
+
+        //Recibir datos del cliente
+        r = recv(fd2, buffer, sizeof(buffer), 0);
+            if (r < 0) {
+                perror("Error en recv");
+                close(fd);
+                close(fd2);
+                exit(1);
+            }
+
+            if (strcmp(buffer, "<<SALIR>>") == 0) {
+                close(fd2);
+                break;
+            }
+
+
+            char temp[RESP_MAX];
+            char *res = buscar_por_clave(f, buffer, temp);
+            if (res) {
+                r = send(fd2, res, strlen(res), 0);
+                    if (r < 0) {
+                        perror("Error en send");
+                        close(fd);
+                        close(fd2);
+                        exit(1);
+                    }
+            } else {
+                r = send(fd2, "N/A", strlen("N/A"), 0);
+                    if (r < 0) {
+                        perror("Error en send");
+                        close(fd);
+                        close(fd2);
+                        exit(1);
+                    }     
+            }
     
         
     }
