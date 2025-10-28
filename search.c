@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include "hash.h"
+#include <time.h>   
 
 #define PORT 3540
 #define BACKLOG 4
@@ -159,7 +160,17 @@ int main (int argc, char *argv[]) {
 
                 memset(temp, 0, sizeof(temp));      
 
+                struct timespec start, end;
+                clock_gettime(CLOCK_MONOTONIC, &start);
+
                 res = buscar_por_clave(f, titulo, temp);
+
+                clock_gettime(CLOCK_MONOTONIC, &end);
+                double tiempo = (end.tv_sec - start.tv_sec) +
+                                (end.tv_nsec - start.tv_nsec) / 1e9;
+        
+                printf("Tiempo de busqueda: %.6f segundos\n",tiempo);
+
                 if (res) {
                     r = send(fd2, res, strlen(res), 0);
                         if (r < 0) {
