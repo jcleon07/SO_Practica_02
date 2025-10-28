@@ -2,6 +2,42 @@
 #include <errno.h>
 #include <ctype.h>
 #include <string.h>
+#include <stdio.h>
+
+
+// Función auxiliar para eliminar espacios en blanco al inicio y final
+static void trim_whitespace(char *str) {
+    if (!str || !*str) return;
+    
+    // Trim leading space
+    char *start = str;
+    while(isspace((unsigned char)*start)) start++;
+    
+    // Trim trailing space
+    char *end = str + strlen(str) - 1;
+    while(end > start && isspace((unsigned char)*end)) end--;
+    
+    // Write new null terminator
+    *(end + 1) = '\0';
+    
+    // Move the string to the start if there were leading spaces
+    if (start != str) {
+        memmove(str, start, strlen(start) + 1);
+    }
+}
+
+// Función auxiliar para comparar cadenas ignorando mayúsculas/minúsculas
+static int strings_equal_ignore_case(const char *a, const char *b) {
+    if (!a || !b) return 0;
+    while (*a && *b) {
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) {
+            return 0;
+        }
+        a++;
+        b++;
+    }
+    return *a == *b;  // Ambos deben terminar al mismo tiempo
+}
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -124,7 +160,16 @@ static int extract_nth_field(const char* s, int n, char* out, size_t max) {
     return 0;
 }
 
-void insertar_indice(const char *clave_orig, off_t offset){
+void insertar_indice(const char *clave_orig, off_t offset) {
+    // Asegurar que la tabla esté inicializada
+    static int initialized = 0;
+    if (!initialized) {
+        init_tabla();
+        initialized = 1;
+        // No mostrar depuración durante la inicialización
+        return;
+    }
+
     char clave[CLAVE_MAX];
     strncpy(clave, clave_orig, CLAVE_MAX-1);
     clave[CLAVE_MAX-1] = '\0';
@@ -133,28 +178,30 @@ void insertar_indice(const char *clave_orig, off_t offset){
     uint64_t h = calcular_hash64(clave);
     int idx = indice_de_hash_from_u64(h);
 
-    if(!nodes || nodes_count >= nodes_capacity) {
-        size_t new_capacity = nodes_capacity * 2;
-        if (new_capacity == 0) new_capacity = 16;
-        size_t max_nodes = max_nodes_for_limit(9 * 1024 * 1024);
-        if (new_capacity > max_nodes) {
-            return;
-        }
+    // Asegurar que tenemos espacio para más nodos
+    if (!nodes || nodes_count >= nodes_capacity) {
+        size_t new_capacity = nodes_capacity ? nodes_capacity * 2 : 16;
+        
         Nodo *new_nodes = realloc(nodes, new_capacity * sizeof(Nodo));
         if (!new_nodes) {
-            perror("realloc nodes");
+            perror("Error en realloc de nodos");
             return;
         }
         nodes = new_nodes;
         nodes_capacity = new_capacity;
-    }
+        }
 
+        // Crear nuevo nodo
     int32_t id = nodes_count++;
     nodes[id].hash = h;
     nodes[id].offset = offset;
     nodes[id].siguiente = tabla[idx];
-    tabla[idx] = id; 
-}
+    tabla[idx] = id;
+
+    }
+
+
+
 
 void construir_indice(FILE *f) {
     init_tabla();
@@ -213,121 +260,181 @@ char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out) {
         return NULL;
     }
 
+    printf("\n=== BÚSQUEDA INICIADA ===\n");
+
+    
     char clave_norm[CLAVE_MAX];
     strncpy(clave_norm, clave_orig, CLAVE_MAX-1);
     clave_norm[CLAVE_MAX-1] = '\0';
+    
+    // Normalizar la clave
+    trim_whitespace(clave_norm);
     to_lower_str(clave_norm);
     
-    printf("Buscando clave: '%s'\n", clave_norm);
 
     
-    // Si no se encontró en caché, intentar con el hash
+    // Calcular el hash
     uint64_t h = calcular_hash64(clave_norm);
     int idx = indice_de_hash_from_u64(h);
+    
+    printf("Hash calculado: %llu\n", (unsigned long long)h);
+    printf("Índice en tabla hash: %d\n", idx);
+    
     int32_t cur = tabla[idx];
+    int intentos = 0;
     
     while (cur != -1) {
+        intentos++;
+        printf("\n--- Intento %d ---\n", intentos);
+        printf("Nodo actual: %d\n", cur);
+        printf("Hash almacenado: %llu\n", (unsigned long long)nodes[cur].hash);
+        printf("Offset en archivo: %ld\n", (long)nodes[cur].offset);
+        
         if (nodes[cur].hash == h) {
-            if (fseeko(f, nodes[cur].offset, SEEK_SET) == 0) {
-                if (fgets(buffer_out, RESP_MAX, f)) {
-                    // Limpiar saltos de línea
-                    size_t L = strlen(buffer_out);
-                    while (L > 0 && (buffer_out[L-1] == '\n' || buffer_out[L-1] == '\r')) {
-                        buffer_out[--L] = '\0';
-                    }
-                    
-                    // Extraer el título (segundo campo)
-                    char titulo[CLAVE_MAX];
-                    if (extract_nth_field(buffer_out, 2, titulo, sizeof(titulo))) {
-                        to_lower_str(titulo);
-                        if (strcmp(titulo, clave_norm) == 0) {
-                            printf("Registro encontrado en hash table\n");
-                            return buffer_out;
-                        }
-                    }
-                }
+            printf("¡Hash coincidente encontrado!\n");
+            
+            if (fseeko(f, nodes[cur].offset, SEEK_SET) != 0) {
+                perror("Error posicionando en el archivo");
+                continue;
             }
+            
+            if (!fgets(buffer_out, RESP_MAX, f)) {
+                perror("Error leyendo el registro");
+                continue;
+            }
+            
+            // Hacer una copia para no perder el buffer original
+            char temp_buffer[RESP_MAX];
+            strncpy(temp_buffer, buffer_out, sizeof(temp_buffer) - 1);
+            temp_buffer[sizeof(temp_buffer) - 1] = '\0';
+            
+            // Limpiar saltos de línea
+            size_t L = strlen(temp_buffer);
+            while (L > 0 && (temp_buffer[L-1] == '\n' || temp_buffer[L-1] == '\r')) {
+                temp_buffer[--L] = '\0';
+            }
+            
+            // Extraer el título (segundo campo)
+            char titulo[CLAVE_MAX] = {0};
+            if (extract_nth_field(temp_buffer, 2, titulo, sizeof(titulo) - 1)) {
+                trim_whitespace(titulo);
+                to_lower_str(titulo);
+
+                
+                if (strings_equal_ignore_case(titulo, clave_norm)) {
+                    printf("¡Coincidencia exacta encontrada!\n");
+                    return buffer_out;
+                } else {
+                    printf("Los títulos no coinciden exactamente\n");
+                }
+            } else {
+                printf("Error extrayendo el título del registro\n");
+            }
+        } else {
+            printf("Hash no coincide\n");
         }
+        
         cur = nodes[cur].siguiente;
     }
     
-    printf("No se encontró el registro con título: %s\n", clave_norm);
+    printf("Hash calculado: %llu\n", (unsigned long long)h);
+    printf("Índice en tabla hash: %d\n", idx);
+
+    printf("\n=== BÚSQUEDA FINALIZADA ===\n");
+    printf("No se encontró el registro con título: '%s'\n", clave_norm);
+    printf("Total de nodos revisados: %d\n", intentos);
     return NULL;
 }
 
-int añadir_registro(FILE *f, const char *titulo, const char *ingredientes, const char *instrucciones, const char *enlace, const char *fuente, const char *entidades) {
-    if (!f || !titulo || !ingredientes || !instrucciones) {
-        errno = EINVAL;
+
+
+int añadir_registro(FILE *f, const char *titulo, const char *ingredientes, 
+                   const char *descripcion, const char *link, 
+                   const char *source, const char *ner) {
+    if (!f) {
+        fprintf(stderr, "Error: Archivo no abierto\n");
         return -1;
     }
-
-    if (flock(fileno(f), LOCK_EX) == -1) {
-        perror("flock");
-        return -1;
-    }
-
-    int ultimo_id = 0;
-    char *line = NULL;
-    size_t len = 0;
-    rewind(f);
     
-    if (getline(&line, &len, f) == -1) {
-        ultimo_id = 0;
-    } else {
-        off_t last_pos = 0;
-        while (getline(&line, &len, f) != -1) {
-            char id_str[CLAVE_MAX];
-            if (extract_nth_field(line, 1, id_str, sizeof(id_str))) {
-                int current_id = atoi(id_str);
-                if (current_id > ultimo_id) {
-                    ultimo_id = current_id;
+    printf("\n=== AÑADIENDO NUEVO REGISTRO ===\n");
+
+    // Hacer copias de los parámetros para normalizarlos
+    char titulo_norm[CLAVE_MAX] = {0};
+    strncpy(titulo_norm, titulo, sizeof(titulo_norm) - 1);
+    trim_whitespace(titulo_norm);
+    to_lower_str(titulo_norm);
+    
+    
+    // Calcular el hash del título normalizado
+    uint64_t h = calcular_hash64(titulo_norm);
+    printf("Hash calculado para el título: %llu\n", (unsigned long long)h);
+    uint32_t idx = indice_de_hash_from_u64(h);
+    printf("Índice en tabla hash: %d\n", idx);
+    
+    // Buscar el último ID utilizado
+    int nuevo_id = 1; // Valor por defecto si no hay registros
+    char line[RESP_MAX];
+    
+    // Ir al final del archivo para buscar el último registro
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    
+    printf("Tamaño actual del archivo: %ld bytes\n", file_size);
+    
+    if (file_size > 0) {
+        // Buscar el inicio de la última línea
+        long pos = file_size - 2; // Empezar desde el final-2 para evitar el último \n
+        while (pos > 0) {
+            fseek(f, pos, SEEK_SET);
+            if (fgetc(f) == '\n') {
+                // Leer la línea completa
+                fgets(line, sizeof(line), f);
+                if (strlen(line) > 0) {
+                    // Extraer el ID del último registro
+                    char *token = strtok(line, ",");
+                    if (token) {
+                        nuevo_id = atoi(token) + 1;
+                    }
+                    break;
                 }
             }
-            last_pos = ftello(f);
+            pos--;
         }
     }
+
+    // Construir la línea del nuevo registro
+    char registro[RESP_MAX];
+    snprintf(registro, sizeof(registro), "%d,%s,%s,%s,%s,%s,%s\n", 
+             nuevo_id, titulo, ingredientes, descripcion, link, source, ner);
     
-    free(line);
-    line = NULL;
-
-    int nuevo_id = ultimo_id + 1;
-
-    if (fseeko(f, 0, SEEK_END) != 0) {
-        perror("fseek SEEK_END");
-        flock(fileno(f), LOCK_UN);
-        return -1;
-    }
-
-    off_t offset = ftello(f);
-    if (offset == -1) {
-        perror("ftello");
-        flock(fileno(f), LOCK_UN);
-        return -1;
-    }
-
-    char registro_completo[RESP_MAX];
-    snprintf(registro_completo, sizeof(registro_completo), 
-             "%d,%s,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n",
-             nuevo_id,
-             titulo,
-             ingredientes,
-             instrucciones,
-             enlace ? enlace : "",
-             fuente ? fuente : "user",
-             entidades ? entidades : "[]");
-
-    if (fprintf(f, "%s", registro_completo) < 0) {
-        perror("fprintf");
-        flock(fileno(f), LOCK_UN);
-        return -1;
-    }
+    // Mostrar información de depuración
+    printf("\nRegistro a insertar:\n%s\n", registro);
+    
+    // Escribir el nuevo registro al final del archivo
+    fseek(f, 0, SEEK_END);
+    long offset = ftell(f);
+    printf("Escribiendo en offset: %ld\n", offset);
+    
+    size_t bytes_escritos = fwrite(registro, 1, strlen(registro), f);
     fflush(f);
-
-    insertar_indice(titulo, offset);
-
-    flock(fileno(f), LOCK_UN);
     
-    printf("Nueva receta añadida con ID: %d\n", nuevo_id);
+    if (bytes_escritos != strlen(registro)) {
+        perror("Error al escribir en el archivo");
+        return -1;
+    }
+    
+    printf("Registro escrito correctamente (%zu bytes)\n", bytes_escritos);
+    
+    // Insertar en el índice usando el título normalizado
+    printf("\nInsertando en el índice:\n");
+    printf("  Clave: '%s'\n", titulo_norm);
+    printf("  Hash: %llu\n", (unsigned long long)h);
+    printf("  Offset: %ld\n", offset);
+    
+    insertar_indice(titulo_norm, offset);
+    
+    printf("=== REGISTRO AÑADIDO CON ÉXITO (ID: %d) ===\n\n", nuevo_id);
+    
     return nuevo_id;
 }
 

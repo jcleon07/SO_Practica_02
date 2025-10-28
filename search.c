@@ -141,7 +141,7 @@ int main (int argc, char *argv[]) {
                     } else {
                         r = send(fd2, "Error: Formato incorrecto", strlen("Error: Formato incorrecto"), 0);
                     }
-                    
+
                     if (r < 0) {
                         perror("Error en send");
                         close(fd);
