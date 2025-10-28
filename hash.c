@@ -12,9 +12,6 @@ Nodo *nodes = NULL;
 int32_t nodes_capacity = 0;
 int32_t nodes_count = 0;
 
-RegistroInfo *registros_cache = NULL;
-int total_registros = 0;
-
 void init_tabla(void) {
     for (int i = 0; i < TAM_TABLA; ++i) {
         tabla[i] = -1;
@@ -82,7 +79,7 @@ static int extract_nth_field(const char* s, int n, char* out, size_t max) {
 
         while (*p && i < max - 1) {
             if (in_quotes) {
-                if (*p == '"' && *(p+1) == '"') {
+                if (*p == '"' && (*(p+1) == '"' )) {
                     out[i++] = '"';
                     p += 2;
                 } else if (*p == '"') {
@@ -167,9 +164,6 @@ void construir_indice(FILE *f) {
     }
     reservar_pool_nodos(expected + 16);
 
-    total_registros = 0;
-    registros_cache = NULL;
-
     char *line = NULL;
     size_t len = 0;
     ssize_t nread;
@@ -188,13 +182,6 @@ void construir_indice(FILE *f) {
         nread = getline(&line, &len, f);
         if (nread == -1)
             break;
-
-        if (total_registros % 1000 == 0) {
-            registros_cache = realloc(registros_cache, (total_registros + 1000) * sizeof(RegistroInfo));
-        }
-        registros_cache[total_registros].offset = pos;
-        registros_cache[total_registros].length = nread;
-        total_registros++;
 
         char clave[CLAVE_MAX];
         if (extract_nth_field(line, COL_A_INDEXAR, clave, sizeof(clave))) {
@@ -226,13 +213,15 @@ char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out){
                         buffer_out[--L] = '\0';
                     }
                     
+                    // extraer la clave real y comparar normalizada
                     char clave_leida[CLAVE_MAX];
-                    if (extract_nth_field(buffer_out, 2, clave_leida, sizeof(clave_leida))) {
+                    if (extract_nth_field(buffer_out,2,clave_leida,sizeof(clave_leida))) {
                         to_lower_str(clave_leida);
                         if (strcmp(clave_leida, clave_norm) == 0) {
                             return buffer_out;
                         }
                     }
+
                 }
             }
         }
@@ -260,7 +249,6 @@ int añadir_registro(FILE *f, const char *titulo, const char *ingredientes, cons
     if (getline(&line, &len, f) == -1) {
         ultimo_id = 0;
     } else {
-        off_t last_pos = 0;
         while (getline(&line, &len, f) != -1) {
             char id_str[20];
             if (extract_nth_field(line, 1, id_str, sizeof(id_str))) {
@@ -269,7 +257,6 @@ int añadir_registro(FILE *f, const char *titulo, const char *ingredientes, cons
                     ultimo_id = current_id;
                 }
             }
-            last_pos = ftello(f);
         }
     }
     
@@ -309,45 +296,12 @@ int añadir_registro(FILE *f, const char *titulo, const char *ingredientes, cons
     }
     fflush(f);
 
-    if (total_registros % 1000 == 0) {
-        registros_cache = realloc(registros_cache, (total_registros + 1000) * sizeof(RegistroInfo));
-    }
-    registros_cache[total_registros].offset = offset;
-    registros_cache[total_registros].length = strlen(registro_completo);
-    total_registros++;
-
     insertar_indice(titulo, offset);
 
     flock(fileno(f), LOCK_UN);
     
     printf("Nueva receta añadida con ID: %d\n", nuevo_id);
     return nuevo_id;
-}
-
-char* leer_por_numero_registro(FILE *f, int numero_registro, char *buffer_out) {
-    if (numero_registro < 1 || numero_registro > total_registros) {
-        return NULL;
-    }
-
-    RegistroInfo *info = &registros_cache[numero_registro - 1];
-    if (fseeko(f, info->offset, SEEK_SET) != 0) {
-        perror("fseeko");
-        return NULL;
-    }
-
-    if (fread(buffer_out, 1, info->length, f) != (size_t)info->length) {
-        perror("fread");
-        return NULL;
-    }
-
-    buffer_out[info->length] = '\0';
-
-    size_t L = strlen(buffer_out);
-    while (L > 0 && (buffer_out[L-1] == '\n' || buffer_out[L-1] == '\r')) {
-        buffer_out[--L] = '\0';
-    }
-
-    return buffer_out;
 }
 
 void liberar_tabla(void) {
@@ -358,10 +312,4 @@ void liberar_tabla(void) {
     nodes_capacity = nodes_count = 0;
     for (int i = 0; i < TAM_TABLA; ++i) 
         tabla[i] = -1;
-
-    if (registros_cache) {
-        free(registros_cache);
-        registros_cache = NULL;
-    }
-    total_registros = 0;
 }
