@@ -2,7 +2,10 @@
 #include <errno.h>
 #include <ctype.h>
 #include <string.h>
+#include <stdlib.h>
 #include <stdio.h>
+#include <sys/stat.h>
+#include <sys/file.h>
 
 
 // Función auxiliar para eliminar espacios en blanco al inicio y final
@@ -38,10 +41,8 @@ static int strings_equal_ignore_case(const char *a, const char *b) {
     }
     return *a == *b;  // Ambos deben terminar al mismo tiempo
 }
-#include <stdlib.h>
-#include <stdio.h>
-#include <sys/stat.h>
-#include <sys/file.h>
+
+//------------------------------------------------------------------
 
 int32_t tabla[TAM_TABLA];
 Nodo *nodes = NULL;
