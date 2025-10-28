@@ -276,7 +276,7 @@ int añadir_registro(FILE *f, const char *titulo, const char *ingredientes, cons
     } else {
         off_t last_pos = 0;
         while (getline(&line, &len, f) != -1) {
-            char id_str[20];
+            char id_str[CLAVE_MAX];
             if (extract_nth_field(line, 1, id_str, sizeof(id_str))) {
                 int current_id = atoi(id_str);
                 if (current_id > ultimo_id) {
@@ -307,7 +307,7 @@ int añadir_registro(FILE *f, const char *titulo, const char *ingredientes, cons
 
     char registro_completo[RESP_MAX];
     snprintf(registro_completo, sizeof(registro_completo), 
-             "%d,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n",
+             "%d,%s,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n",
              nuevo_id,
              titulo,
              ingredientes,
@@ -322,13 +322,6 @@ int añadir_registro(FILE *f, const char *titulo, const char *ingredientes, cons
         return -1;
     }
     fflush(f);
-
-    if (total_registros % 1000 == 0) {
-        registros_cache = realloc(registros_cache, (total_registros + 1000) * sizeof(RegistroInfo));
-    }
-    registros_cache[total_registros].offset = offset;
-    registros_cache[total_registros].length = strlen(registro_completo);
-    total_registros++;
 
     insertar_indice(titulo, offset);
 
