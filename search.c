@@ -122,15 +122,32 @@ int main (int argc, char *argv[]) {
 
             //Agregar registro
             if (strncmp(buffer, "OP2|",4) == 0) {
-                añadir_registro(f, buffer +4, buffer +5, buffer +6, buffer +7, buffer +8, buffer +9);
-                
-                r = send(fd2, "Registro añadido", strlen("Registro añadido"), 0);
+                    char *token;
+                    char *campos[6];
+                    int i = 0;
+                    
+                    // Saltar el "OP2|"
+                    token = strtok(buffer + 4, "|");
+                    
+                    while (token != NULL && i < 6) {
+                        campos[i++] = token;
+                        token = strtok(NULL, "|");
+                    }
+
+                        if (i == 6) {
+                        añadir_registro(f, campos[0], campos[1], campos[2], campos[3], campos[4], campos[5]);
+                        r = send(fd2, "Registro añadido", strlen("Registro añadido"), 0);
+                    } else {
+                        r = send(fd2, "Error: Formato incorrecto", strlen("Error: Formato incorrecto"), 0);
+                    }
+                    
                     if (r < 0) {
                         perror("Error en send");
                         close(fd);
                         close(fd2);
                         exit(1);
                     }
+
             }
 
             // Buscar registro por titulo

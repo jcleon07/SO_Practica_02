@@ -326,32 +326,6 @@ int añadir_registro(FILE *f, const char *titulo, const char *ingredientes, cons
     return nuevo_id;
 }
 
-char* leer_por_numero_registro(FILE *f, int numero_registro, char *buffer_out) {
-    if (numero_registro < 1 || numero_registro > total_registros) {
-        return NULL;
-    }
-
-    RegistroInfo *info = &registros_cache[numero_registro - 1];
-    if (fseeko(f, info->offset, SEEK_SET) != 0) {
-        perror("fseeko");
-        return NULL;
-    }
-
-    if (fread(buffer_out, 1, info->length, f) != (size_t)info->length) {
-        perror("fread");
-        return NULL;
-    }
-
-    buffer_out[info->length] = '\0';
-
-    size_t L = strlen(buffer_out);
-    while (L > 0 && (buffer_out[L-1] == '\n' || buffer_out[L-1] == '\r')) {
-        buffer_out[--L] = '\0';
-    }
-
-    return buffer_out;
-}
-
 void liberar_tabla(void) {
     if (nodes) {
         free(nodes); 
