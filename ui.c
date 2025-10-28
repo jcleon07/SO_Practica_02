@@ -17,7 +17,7 @@ int main() {
     //Declaracion de variables
     int fd, r, op;
     struct sockaddr_in server;
-    char buffer[1000];
+    char buffer[8000];
 
     //Creacion del socket
     fd = socket(AF_INET, SOCK_STREAM, 0);
