@@ -15,11 +15,6 @@ typedef struct Nodo {
     int32_t siguiente;
 } Nodo;
 
-typedef struct RegistroInfo {
-    off_t offset;
-    int32_t length;
-} RegistroInfo;
-
 unsigned long long XXH64(const void* data, size_t len, unsigned long long seed);
 
 void init_tabla(void);
@@ -37,7 +32,5 @@ extern int32_t tabla[TAM_TABLA];
 extern Nodo *nodes;
 extern int32_t nodes_capacity;
 extern int32_t nodes_count;
-extern RegistroInfo *registros_cache;
-extern int total_registros;
 
 #endif

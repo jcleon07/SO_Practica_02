@@ -7,6 +7,26 @@
 #include <sys/stat.h>
 #include <sys/file.h>
 
+// ------------------- Uso de Memoria -------------------
+
+#include <sys/resource.h>
+
+size_t get_memory_usage_kb() {
+    struct rusage usage;
+    getrusage(RUSAGE_SELF, &usage);
+    return (size_t)usage.ru_maxrss; // KB en Linux
+}
+
+void check_memory_limit() {
+    size_t current_usage = get_memory_usage_kb();
+    if (current_usage > 9000) { // 9 MB
+        fprintf(stderr, "Advertencia: Uso de memoria acercándose al límite: %zu KB\n", current_usage);
+    }
+}
+
+
+//--------------------------------------------------
+
 
 // Función auxiliar para eliminar espacios en blanco al inicio y final
 static void trim_whitespace(char *str) {
@@ -49,9 +69,6 @@ Nodo *nodes = NULL;
 int32_t nodes_capacity = 0;
 int32_t nodes_count = 0;
 
-RegistroInfo *registros_cache = NULL;
-int total_registros = 0;
-
 void init_tabla(void) {
     for (int i = 0; i < TAM_TABLA; ++i) {
         tabla[i] = -1;
@@ -67,7 +84,7 @@ static size_t max_nodes_for_limit(size_t limit_bytes) {
 }
 
 void reservar_pool_nodos(size_t expected) {
-    const size_t MEM_LIM_MB = 9;
+    const size_t MEM_LIM_MB = 6;
     size_t max_nodes = max_nodes_for_limit(MEM_LIM_MB * 1024 * 1024);
     size_t want = expected ? expected : 1024; 
     if (want > max_nodes)
@@ -205,18 +222,20 @@ void insertar_indice(const char *clave_orig, off_t offset) {
 
 
 void construir_indice(FILE *f) {
+
+    printf("Memoria inicial: %zu KB\n", get_memory_usage_kb());
+
     init_tabla();
 
     struct stat st;
-    size_t expected = 0;
+    size_t expected = 5000;
     if (fstat(fileno(f), &st) == 0 && st.st_size > 0) {
-        size_t avg_line = 120;
+        size_t avg_line = 200;
         expected = (size_t)(st.st_size / avg_line);
+        if (expected > 100000) expected = 100000; // Límite máximo
     }
-    reservar_pool_nodos(expected + 16);
+    reservar_pool_nodos(expected);
 
-    total_registros = 0;
-    registros_cache = NULL;
 
     char *line = NULL;
     size_t len = 0;
@@ -237,13 +256,6 @@ void construir_indice(FILE *f) {
         if (nread == -1)
             break;
 
-        if (total_registros % 1000 == 0) {
-            registros_cache = realloc(registros_cache, (total_registros + 1000) * sizeof(RegistroInfo));
-        }
-        registros_cache[total_registros].offset = pos;
-        registros_cache[total_registros].length = nread;
-        total_registros++;
-
         char clave[CLAVE_MAX];
         if (extract_nth_field(line, COL_A_INDEXAR, clave, sizeof(clave))) {
             if (strlen(clave) > 0) {
@@ -253,6 +265,7 @@ void construir_indice(FILE *f) {
     }
 
     free(line);
+    printf("Memoria final: %zu KB, Nodos: %d\n", get_memory_usage_kb(), nodes_count);
 }
 
 char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out) {
@@ -261,14 +274,16 @@ char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out) {
         return NULL;
     }
 
+    // Buffers estáticos reutilizables
+    static char clave_norm[CLAVE_MAX];
+    static char temp_buffer[RESP_MAX];
+    static char titulo_temp[CLAVE_MAX];
+
     printf("\n=== BÚSQUEDA INICIADA ===\n");
 
-    
-    char clave_norm[CLAVE_MAX];
+    // Normalización rápida 
     strncpy(clave_norm, clave_orig, CLAVE_MAX-1);
     clave_norm[CLAVE_MAX-1] = '\0';
-    
-    // Normalizar la clave
     trim_whitespace(clave_norm);
     to_lower_str(clave_norm);
     
@@ -282,68 +297,48 @@ char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out) {
     printf("Índice en tabla hash: %d\n", idx);
     
     int32_t cur = tabla[idx];
-    int intentos = 0;
+
     
     while (cur != -1) {
-        intentos++;
-        printf("\n--- Intento %d ---\n", intentos);
-        printf("Nodo actual: %d\n", cur);
-        printf("Hash almacenado: %llu\n", (unsigned long long)nodes[cur].hash);
-        printf("Offset en archivo: %ld\n", (long)nodes[cur].offset);
+
         
         if (nodes[cur].hash == h) {
             printf("¡Hash coincidente encontrado!\n");
             
-            if (fseeko(f, nodes[cur].offset, SEEK_SET) != 0) {
-                perror("Error posicionando en el archivo");
-                continue;
-            }
+           if (fseeko(f, nodes[cur].offset, SEEK_SET) == 0 &&
+                fgets(buffer_out, RESP_MAX, f)) {
             
-            if (!fgets(buffer_out, RESP_MAX, f)) {
-                perror("Error leyendo el registro");
-                continue;
-            }
-            
-            // Hacer una copia para no perder el buffer original
-            char temp_buffer[RESP_MAX];
-            strncpy(temp_buffer, buffer_out, sizeof(temp_buffer) - 1);
-            temp_buffer[sizeof(temp_buffer) - 1] = '\0';
-            
-            // Limpiar saltos de línea
-            size_t L = strlen(temp_buffer);
-            while (L > 0 && (temp_buffer[L-1] == '\n' || temp_buffer[L-1] == '\r')) {
-                temp_buffer[--L] = '\0';
-            }
-            
-            // Extraer el título (segundo campo)
-            char titulo[CLAVE_MAX] = {0};
-            if (extract_nth_field(temp_buffer, 2, titulo, sizeof(titulo) - 1)) {
-                trim_whitespace(titulo);
-                to_lower_str(titulo);
 
-                
-                if (strings_equal_ignore_case(titulo, clave_norm)) {
-                    printf("¡Coincidencia exacta encontrada!\n");
-                    return buffer_out;
-                } else {
-                    printf("Los títulos no coinciden exactamente\n");
-                }
-            } else {
-                printf("Error extrayendo el título del registro\n");
+            // Procesar registro
+            strncpy(temp_buffer, buffer_out, RESP_MAX-1);
+            temp_buffer[RESP_MAX-1] = '\0';
+            
+            // Limpiar newlines
+            char *end = temp_buffer + strlen(temp_buffer) - 1;
+            while (end > temp_buffer && (*end == '\n' || *end == '\r')) {
+                *end-- = '\0';
             }
-        } else {
-            printf("Hash no coincide\n");
+            
+            // Extraer y comparar título
+            if (extract_nth_field(temp_buffer, 2, titulo_temp, CLAVE_MAX-1)) {
+                trim_whitespace(titulo_temp);
+                to_lower_str(titulo_temp);
+                
+                if (strcmp(titulo_temp, clave_norm) == 0) {
+                    return buffer_out; // ¡Éxito!
+                }
+            }
         }
-        
+    }
         cur = nodes[cur].siguiente;
     }
+    
     
     printf("Hash calculado: %llu\n", (unsigned long long)h);
     printf("Índice en tabla hash: %d\n", idx);
 
     printf("\n=== BÚSQUEDA FINALIZADA ===\n");
     printf("No se encontró el registro con título: '%s'\n", clave_norm);
-    printf("Total de nodos revisados: %d\n", intentos);
     return NULL;
 }
 
@@ -448,9 +443,4 @@ void liberar_tabla(void) {
     for (int i = 0; i < TAM_TABLA; ++i) 
         tabla[i] = -1;
 
-    if (registros_cache) {
-        free(registros_cache);
-        registros_cache = NULL;
-    }
-    total_registros = 0;
 }
