@@ -207,39 +207,77 @@ void construir_indice(FILE *f) {
     free(line);
 }
 
-char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out){
+char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out) {
+    if (!f || !clave_orig || !buffer_out) {
+        printf("Error: Parámetros inválidos\n");
+        return NULL;
+    }
+
     char clave_norm[CLAVE_MAX];
     strncpy(clave_norm, clave_orig, CLAVE_MAX-1);
     clave_norm[CLAVE_MAX-1] = '\0';
     to_lower_str(clave_norm);
     
+    printf("Buscando clave: '%s'\n", clave_norm);
+    
+    // Primero buscar en la caché
+    for (int i = 0; i < total_registros; i++) {
+        if (fseeko(f, registros_cache[i].offset, SEEK_SET) == 0) {
+            if (fgets(buffer_out, RESP_MAX, f)) {
+                char temp[RESP_MAX];
+                strncpy(temp, buffer_out, RESP_MAX-1);
+                temp[RESP_MAX-1] = '\0';
+                
+                // Limpiar saltos de línea
+                size_t L = strlen(temp);
+                while (L > 0 && (temp[L-1] == '\n' || temp[L-1] == '\r')) {
+                    temp[--L] = '\0';
+                }
+                
+                // Extraer el título (segundo campo)
+                char titulo[CLAVE_MAX];
+                if (extract_nth_field(temp, 2, titulo, sizeof(titulo))) {
+                    to_lower_str(titulo);
+                    if (strcmp(titulo, clave_norm) == 0) {
+                        printf("Registro encontrado en caché\n");
+                        return buffer_out;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Si no se encontró en caché, intentar con el hash
     uint64_t h = calcular_hash64(clave_norm);
     int idx = indice_de_hash_from_u64(h);
     int32_t cur = tabla[idx];
-
+    
     while (cur != -1) {
         if (nodes[cur].hash == h) {
-            if (fseeko(f, nodes[cur].offset, SEEK_SET) == 0){
+            if (fseeko(f, nodes[cur].offset, SEEK_SET) == 0) {
                 if (fgets(buffer_out, RESP_MAX, f)) {
+                    // Limpiar saltos de línea
                     size_t L = strlen(buffer_out);
-                    while (L > 0 && (buffer_out[L-1] == '\n' || buffer_out[L -1] == '\r')) {
+                    while (L > 0 && (buffer_out[L-1] == '\n' || buffer_out[L-1] == '\r')) {
                         buffer_out[--L] = '\0';
                     }
                     
-                    // extraer la clave real y comparar normalizada
-                    char clave_leida[CLAVE_MAX];
-                    if (extract_nth_field(buffer_out,2,clave_leida,sizeof(clave_leida))) {
-                        to_lower_str(clave_leida);
-                        if (strcmp(clave_leida, clave_norm) == 0) {
+                    // Extraer el título (segundo campo)
+                    char titulo[CLAVE_MAX];
+                    if (extract_nth_field(buffer_out, 2, titulo, sizeof(titulo))) {
+                        to_lower_str(titulo);
+                        if (strcmp(titulo, clave_norm) == 0) {
+                            printf("Registro encontrado en hash table\n");
                             return buffer_out;
                         }
                     }
-
                 }
             }
         }
         cur = nodes[cur].siguiente;
     }
+    
+    printf("No se encontró el registro con título: %s\n", clave_norm);
     return NULL;
 }
 
