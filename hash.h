@@ -10,17 +10,17 @@
 #define RESP_MAX 10096
 
 typedef struct Nodo {
-    uint64_t hash;
-    off_t offset;
+    uint32_t hash;
+    uint32_t offset;
     int32_t siguiente;
 } Nodo;
 
-unsigned long long XXH64(const void* data, size_t len, unsigned long long seed);
+unsigned long long XXH32(const void* data, size_t len, unsigned long long seed);
 
 void init_tabla(void);
 void reservar_pool_nodos(size_t expected);
-unsigned long long calcular_hash64(const char *clave);
-int indice_de_hash_from_u64(uint64_t h);
+unsigned long long calcular_hash32(const char *clave);
+int indice_de_hash_from_u32(uint32_t h);
 void insertar_indice(const char *clave_orig, off_t offset);
 void construir_indice(FILE *f);
 char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out);

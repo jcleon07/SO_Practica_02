@@ -100,11 +100,11 @@ void reservar_pool_nodos(size_t expected) {
     nodes_count = 0;
 }
 
-unsigned long long calcular_hash64(const char *clave) {
-    return (unsigned long long) XXH64(clave, strlen(clave), 0);
+unsigned long long calcular_hash32(const char *clave) {
+    return (unsigned long) XXH32(clave, strlen(clave), 0);
 }
 
-int indice_de_hash_from_u64(uint64_t h) {
+int indice_de_hash_from_u32(uint32_t h) {
     return (int) (h % TAM_TABLA);
 }
 
@@ -188,8 +188,8 @@ void insertar_indice(const char *clave_orig, off_t offset) {
     clave[CLAVE_MAX-1] = '\0';
     to_lower_str(clave);
 
-    uint64_t h = calcular_hash64(clave);
-    int idx = indice_de_hash_from_u64(h);
+    uint32_t h = calcular_hash32(clave);
+    int idx = indice_de_hash_from_u32(h);
 
     // Asegurar que tenemos espacio para más nodos
     if (!nodes || nodes_count >= nodes_capacity) {
@@ -285,8 +285,8 @@ char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out) {
 
     
     // Calcular el hash
-    uint64_t h = calcular_hash64(clave_norm);
-    int idx = indice_de_hash_from_u64(h);
+    uint32_t h = calcular_hash32(clave_norm);
+    int idx = indice_de_hash_from_u32(h);
     
     printf("Hash calculado: %llu\n", (unsigned long long)h);
     printf("Índice en tabla hash: %d\n", idx);
@@ -357,9 +357,9 @@ int añadir_registro(FILE *f, const char *titulo, const char *ingredientes,
     
     
     // Calcular el hash del título normalizado
-    uint64_t h = calcular_hash64(titulo_norm);
+    uint32_t h = calcular_hash32(titulo_norm);
     printf("Hash calculado para el título: %llu\n", (unsigned long long)h);
-    uint32_t idx = indice_de_hash_from_u64(h);
+    uint32_t idx = indice_de_hash_from_u32(h);
     printf("Índice en tabla hash: %d\n", idx);
     
     // Buscar el último ID utilizado
