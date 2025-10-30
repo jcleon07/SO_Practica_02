@@ -70,11 +70,11 @@ int32_t nodes_capacity = 0;
 int32_t nodes_count = 0;
 
 void init_tabla(void) {
-    for (int i = 0; i < TAM_TABLA; ++i) {
+    for (int i = 0; i < TAM_TABLA; ++i)
         tabla[i] = -1;
-    }
-    nodes_count = 0;
+        nodes_count = 0;
 }
+
 
 static size_t max_nodes_for_limit(size_t limit_bytes) {
     size_t per = sizeof(Nodo);
@@ -84,14 +84,14 @@ static size_t max_nodes_for_limit(size_t limit_bytes) {
 }
 
 void reservar_pool_nodos(size_t expected) {
-    const size_t MEM_LIM_MB = 6;
-    size_t max_nodes = max_nodes_for_limit(MEM_LIM_MB * 1024 * 1024);
-    size_t want = expected ? expected : 1024; 
+    const size_t MEM_LIM_MB = 5;
+    size_t max_nodes = max_nodes_for_limit(MEM_LIM_MB * 1000 * 1000);
+    size_t want = expected ? expected : 1000; 
     if (want > max_nodes)
         want = max_nodes;
     if (want < 16)
         want = 16;
-    nodes = (Nodo*) calloc(want, sizeof(Nodo));
+    nodes = (Nodo*) calloc(want,sizeof(Nodo));
     if (!nodes){
         perror("calloc nodes");
         exit(-1);
@@ -178,15 +178,10 @@ static int extract_nth_field(const char* s, int n, char* out, size_t max) {
     return 0;
 }
 
+
+
+
 void insertar_indice(const char *clave_orig, off_t offset) {
-    // Asegurar que la tabla esté inicializada
-    static int initialized = 0;
-    if (!initialized) {
-        init_tabla();
-        initialized = 1;
-        // No mostrar depuración durante la inicialización
-        return;
-    }
 
     char clave[CLAVE_MAX];
     strncpy(clave, clave_orig, CLAVE_MAX-1);
@@ -222,31 +217,28 @@ void insertar_indice(const char *clave_orig, off_t offset) {
 
 
 void construir_indice(FILE *f) {
-
-    printf("Memoria inicial: %zu KB\n", get_memory_usage_kb());
-
     init_tabla();
 
+    //Se estima el numero de lineas
     struct stat st;
-    size_t expected = 5000;
-    if (fstat(fileno(f), &st) == 0 && st.st_size > 0) {
-        size_t avg_line = 200;
+    size_t expected =0;
+    if (fstat(fileno(f),&st) == 0 && st.st_size > 0) {
+        size_t avg_line = 120;
         expected = (size_t)(st.st_size / avg_line);
-        if (expected > 100000) expected = 100000; // Límite máximo
     }
-    reservar_pool_nodos(expected);
-
+    reservar_pool_nodos(expected +16);
 
     char *line = NULL;
     size_t len = 0;
     ssize_t nread;
 
+    //Se salta la cabecera
     if ((nread = getline(&line, &len, f)) == -1) {
         free(line);
         return;
     }
 
-    const int COL_A_INDEXAR = 2;  // Título es la columna 2 (ID es columna 1)
+    const int COL_A_INDEXAR = 2;
 
     while (1) {
         off_t pos = ftello(f);
@@ -267,6 +259,9 @@ void construir_indice(FILE *f) {
     free(line);
     printf("Memoria final: %zu KB, Nodos: %d\n", get_memory_usage_kb(), nodes_count);
 }
+
+
+
 
 char* buscar_por_clave(FILE *f, const char *clave_orig, char *buffer_out) {
     if (!f || !clave_orig || !buffer_out) {
