@@ -84,13 +84,7 @@ static size_t max_nodes_for_limit(size_t limit_bytes) {
 }
 
 void reservar_pool_nodos(size_t expected) {
-    const size_t MEM_LIM_MB = 5;
-    size_t max_nodes = max_nodes_for_limit(MEM_LIM_MB * 1000 * 1000);
     size_t want = expected ? expected : 1000; 
-    if (want > max_nodes)
-        want = max_nodes;
-    if (want < 16)
-        want = 16;
     nodes = (Nodo*) calloc(want,sizeof(Nodo));
     if (!nodes){
         perror("calloc nodes");
